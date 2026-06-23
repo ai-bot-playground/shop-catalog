@@ -1,6 +1,16 @@
 spring:
   application:
     name: shop-catalog
+  jpa:
+    hibernate:
+      ddl-auto: none          # Flyway owns the schema
+    open-in-view: false
+  flyway:
+    enabled: true
+  cache:
+    type: caffeine
+    caffeine:
+      spec: maximumSize=1000,expireAfterWrite=60s
 management:
   endpoints:
     web:
