@@ -11,6 +11,13 @@ spring:
     type: caffeine
     caffeine:
       spec: maximumSize=1000,expireAfterWrite=60s
+
+shop:
+  # Non-prod test-support endpoints (POST/DELETE /products) for acceptance tests.
+  # Enabled per environment via SHOP_TEST_SUPPORT_ENABLED (preprod: true, prod: false).
+  test-support:
+    enabled: ${SHOP_TEST_SUPPORT_ENABLED:false}
+
 management:
   endpoints:
     web:
