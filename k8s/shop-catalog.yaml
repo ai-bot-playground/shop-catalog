@@ -1,0 +1,81 @@
+# shop-catalog on Kubernetes — minimal skeleton slice (no DB yet).
+# Apply to the preprod cluster:
+#   kubectl --context kind-preprod apply -f shop-catalog/k8s/shop-catalog.yaml
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-catalog-config
+  namespace: shop
+data:
+  # Per-environment config lives here. In the prod cluster this becomes "prod".
+  SPRING_PROFILES_ACTIVE: "preprod"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop-catalog
+  namespace: shop
+  labels:
+    app: shop-catalog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shop-catalog
+  template:
+    metadata:
+      labels:
+        app: shop-catalog
+    spec:
+      containers:
+        - name: shop-catalog
+          image: localhost/shop-catalog:0.0.1   # loaded into kind via `kind load` (no registry)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: shop-catalog-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              memory: "512Mi"
+          # Startup gate: give the JVM time to boot before liveness/readiness take over.
+          startupProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 30        # up to ~150s for a cold first start
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop-catalog
+  namespace: shop
+spec:
+  type: ClusterIP
+  selector:
+    app: shop-catalog
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
