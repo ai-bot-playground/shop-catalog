@@ -1,7 +1,7 @@
 # shop-catalog
 
 Serwis przeglądania oferty — typowo *read-heavy*. Świadomie **nie** zarządza
-stanem magazynowym (od tego jest shop-inwentory). Standalone repo z własnym
+stanem magazynowym (od tego jest shop-inventory). Standalone repo z własnym
 `Dockerfile` i kodem. Stack: Spring Boot + Spring Data JPA (Postgres) + cache.
 
 ## Baza
@@ -16,7 +16,7 @@ stanem magazynowym (od tego jest shop-inwentory). Standalone repo z własnym
 | GET    | `/products/{id}`         | szczegóły produktu            |
 | GET    | `/products/search?q=...` | wyszukiwanie                  |
 
-Dostępność sztuk nie pochodzi stąd — frontend pobiera ją z shop-inwentory.
+Dostępność sztuk nie pochodzi stąd — frontend pobiera ją z shop-inventory.
 
 ## Cache
 Read-heavy → cache (Spring Cache + Redis lub Caffeine) na produkty i listy,
