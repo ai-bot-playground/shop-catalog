@@ -34,3 +34,35 @@ skalowania serwis w systemie.
 `SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/catalog_db`,
 `SPRING_DATA_REDIS_HOST=redis`, `SPRING_KAFKA_BOOTSTRAP_SERVERS=shop-kafka:9092`,
 `SERVER_PORT=8080`.
+
+## High Level Design (ogólny workflow)
+
+Serwis *read-heavy*: synchroniczne REST przez gateway. Odczyt najpierw trafia w
+cache (Caffeine), a przy pudle do Postgresa. Brak Kafki w MVP. Flyway zakłada
+schemat i seed przy starcie.
+
+```mermaid
+flowchart LR
+    UI["shop-ui"] -->|"/api/products"| GW["shop-gateway"]
+    GW -->|"/products (StripPrefix)"| CAT["shop-catalog REST"]
+    CAT -->|"@Cacheable"| CACHE[("Caffeine cache")]
+    CAT -->|"JPA"| DB[("Postgres catalog_db")]
+    FW["Flyway V1: schema + seed"] -. "on startup" .-> DB
+```
+
+## Low Level Design (diagram aktywności)
+
+Obsługa `GET /products/{id}`:
+
+```mermaid
+flowchart TD
+    A(["GET /products/{id}"]) --> B{"w cache Caffeine?"}
+    B -- tak --> C["zwróć z cache"]
+    B -- nie --> D["ProductRepository.findById"]
+    D --> E{"znaleziono?"}
+    E -- nie --> F["404 Not Found"]
+    E -- tak --> G["map -> ProductResponse"]
+    G --> H["zapisz w cache"]
+    H --> I(["200 OK"])
+    C --> I
+```

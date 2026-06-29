@@ -1,0 +1,5 @@
+spring:
+  datasource:
+    # Testcontainers JDBC URL: spins up postgres:17-alpine on first connection.
+    url: jdbc:tc:postgresql:17-alpine:///catalogdb
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
