@@ -1,68 +1,66 @@
 # shop-catalog
 
-Serwis przeglądania oferty — typowo *read-heavy*. Świadomie **nie** zarządza
-stanem magazynowym (od tego jest shop-inventory). Standalone repo z własnym
-`Dockerfile` i kodem. Stack: Spring Boot + Spring Data JPA (Postgres) + cache.
+Serwis katalogu produktów — *read-heavy*, bez zarządzania stanem magazynowym (to robi `shop-inventory`).
 
-## Baza
-`catalog_db`: `products(id, name, description, price, image_url, category_id)`,
-`categories`. Migracje przez Flyway/Liquibase.
+**Stack:** Java 25 · Spring Boot 4.0.7 · Spring Data JPA · Flyway · Caffeine cache · PostgreSQL
 
-## API do zaimplementowania
+## API
 
-| Metoda | Ścieżka                  | Opis                          |
-|--------|--------------------------|-------------------------------|
-| GET    | `/products`              | lista z paginacją i filtrami  |
-| GET    | `/products/{id}`         | szczegóły produktu            |
-| GET    | `/products/search?q=...` | wyszukiwanie                  |
+| Metoda | Ścieżka              | Opis                        |
+|--------|----------------------|-----------------------------|
+| GET    | `/products`          | lista z paginacją           |
+| GET    | `/products/{id}`     | szczegóły produktu (cached) |
+| GET    | `/products/search?q` | wyszukiwanie po nazwie      |
 
-Dostępność sztuk nie pochodzi stąd — frontend pobiera ją z shop-inventory.
+`GET /products/{id}` jest cache'owany przez Caffeine (`maximumSize=1000, expireAfterWrite=60s`).
 
-## Cache
-Read-heavy → cache (Spring Cache + Redis lub Caffeine) na produkty i listy,
-z inwalidacją przy zmianie. Zdejmuje ruch z Postgresa przy szczycie.
+Zdrowie serwisu: `GET /actuator/health`.
 
-## Kafka (opcjonalnie)
-Może publikować `ProductCreated/Updated` lub konsumować `inventory-events`, by
-aktualizować flagę dostępności. Dla MVP można pominąć.
+## Baza danych
 
-## Skalowanie
-Bezstanowy, mocno cache'owany → wiele instancji + read replicas. Najłatwiejszy do
-skalowania serwis w systemie.
+Schemat zakłada Flyway przy starcie (`V1__init.sql`):
 
-## Konfiguracja (env)
-`SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/catalog_db`,
-`SPRING_DATA_REDIS_HOST=redis`, `SPRING_KAFKA_BOOTSTRAP_SERVERS=shop-kafka:9092`,
-`SERVER_PORT=8080`.
-
-## High Level Design (ogólny workflow)
-
-Serwis *read-heavy*: synchroniczne REST przez gateway. Odczyt najpierw trafia w
-cache (Caffeine), a przy pudle do Postgresa. Brak Kafki w MVP. Flyway zakłada
-schemat i seed przy starcie.
-
-```mermaid
-flowchart LR
-    UI["shop-ui"] -->|"/api/products"| GW["shop-gateway"]
-    GW -->|"/products (StripPrefix)"| CAT["shop-catalog REST"]
-    CAT -->|"@Cacheable"| CACHE[("Caffeine cache")]
-    CAT -->|"JPA"| DB[("Postgres catalog_db")]
-    FW["Flyway V1: schema + seed"] -. "on startup" .-> DB
+```
+categories(id, name)
+products(id, name, description, price, image_url, category_id → categories)
 ```
 
-## Low Level Design (diagram aktywności)
+## Uruchomienie lokalne
 
-Obsługa `GET /products/{id}`:
-
-```mermaid
-flowchart TD
-    A(["GET /products/{id}"]) --> B{"w cache Caffeine?"}
-    B -- tak --> C["zwróć z cache"]
-    B -- nie --> D["ProductRepository.findById"]
-    D --> E{"znaleziono?"}
-    E -- nie --> F["404 Not Found"]
-    E -- tak --> G["map -> ProductResponse"]
-    G --> H["zapisz w cache"]
-    H --> I(["200 OK"])
-    C --> I
+```bash
+./gradlew bootRun
 ```
+
+Wymagana baza PostgreSQL. Przykładowe dane (Electronics, Books) ładuje Flyway automatycznie.
+
+## Docker
+
+```bash
+./gradlew bootJar
+docker build -t shop-catalog:0.0.1 .
+docker run -e SPRING_DATASOURCE_URL=jdbc:postgresql://host:5432/catalog_db \
+           -p 8080:8080 shop-catalog:0.0.1
+```
+
+## Zmienne środowiskowe
+
+| Zmienna                  | Domyślnie | Opis                                      |
+|--------------------------|-----------|-------------------------------------------|
+| `SPRING_DATASOURCE_URL`  | —         | JDBC URL do PostgreSQL                    |
+| `SPRING_DATASOURCE_USERNAME` | —     | użytkownik bazy                           |
+| `SPRING_DATASOURCE_PASSWORD` | —     | hasło bazy                                |
+| `SHOP_TEST_SUPPORT_ENABLED` | `false` | włącza endpointy testowe (POST/DELETE /products) |
+
+## Testy
+
+Testy akceptacyjne (Cucumber + Testcontainers) — stawiają własną bazę PostgreSQL:
+
+```bash
+./gradlew test
+```
+
+## CI / K8s
+
+PR do dowolnego brancha uruchamia preprod gate (`.github/workflows/pr-to-main.yml`) — buduje obraz, deployuje na klaster `kind-preprod` i uruchamia cross-service acceptance suite.
+
+Manifest K8s: `k8s/shop-catalog.yaml` (namespace `shop`, `ClusterIP:8080`).
